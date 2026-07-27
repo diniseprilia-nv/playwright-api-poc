@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""Simple scenario runner.
+
+Examples:
+    ./run create_route_today --sg
+    ./run create_route_missing_driver --my
+    ./run --sg
+"""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+SUPPORTED_COUNTRIES = ("sg", "my", "id")
+PROJECT_ROOT = Path(__file__).resolve().parent
+DEFAULT_TARGET = "tests/route/steps/routing.py"
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="run",
+        description="Run Gherkin scenarios by tag and country.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  ./run create_route_today --sg\n"
+            "  ./run create_route_invalid_driver --my\n"
+            "  ./run --id\n"
+        ),
+    )
+    parser.add_argument(
+        "scenario",
+        nargs="?",
+        default=None,
+        help="Scenario tag to run, e.g. create_route_today",
+    )
+
+    country = parser.add_mutually_exclusive_group()
+    for code in SUPPORTED_COUNTRIES:
+        country.add_argument(
+            f"--{code}",
+            dest="country",
+            action="store_const",
+            const=code,
+            help=f"Use {code.upper()} country config",
+        )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args, extra = parser.parse_known_args(argv)
+
+    country = args.country or "sg"
+    cmd = [
+        sys.executable,
+        "-m",
+        "pytest",
+        DEFAULT_TARGET,
+        f"--country={country}",
+    ]
+    if args.scenario:
+        cmd.append(f"--scenario={args.scenario.lstrip('@')}")
+
+    if extra and extra[0] == "--":
+        extra = extra[1:]
+    cmd.extend(extra)
+
+    print(f"→ {' '.join(cmd)}")
+    return subprocess.call(cmd, cwd=PROJECT_ROOT)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
