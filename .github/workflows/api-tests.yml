@@ -1,0 +1,64 @@
+name: API Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      country:
+        description: Country environment
+        required: true
+        default: sg
+        type: choice
+        options: [sg, my, id]
+      scenario:
+        description: Scenario tag (empty = all route scenarios)
+        required: false
+        default: ""
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      BASE_URL: ${{ vars.BASE_URL || 'https://api-qa.ninjavan.co' }}
+      API_TIMEOUT_MS: ${{ vars.API_TIMEOUT_MS || '30000' }}
+      OPERATOR_LOGIN_COUNTRY: ${{ vars.OPERATOR_LOGIN_COUNTRY || 'sg' }}
+      OPERATOR_CLIENT_ID: ${{ secrets.OPERATOR_CLIENT_ID }}
+      OPERATOR_CLIENT_SECRET: ${{ secrets.OPERATOR_CLIENT_SECRET }}
+      COUNTRY: ${{ github.event.inputs.country || 'sg' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Check required secrets
+        run: |
+          if [ -z "$OPERATOR_CLIENT_ID" ] || [ -z "$OPERATOR_CLIENT_SECRET" ]; then
+            echo "Missing secrets: OPERATOR_CLIENT_ID and/or OPERATOR_CLIENT_SECRET"
+            echo "Add them under Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+
+      - name: Run route scenarios
+        run: |
+          if [ -n "${{ github.event.inputs.scenario }}" ]; then
+            ./run "${{ github.event.inputs.scenario }}" --${COUNTRY}
+          else
+            ./run --${COUNTRY}
+          fi

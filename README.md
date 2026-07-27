@@ -96,8 +96,40 @@ Each scenario run prints:
 - **Response** status (bold) and body
 - **Error** message when status is not 2xx
 
+## Run on GitHub Actions
+
+### 1. Add secrets in GitHub
+
+1. Open the repo: https://github.com/diniseprilia-nv/playwright-api-poc
+2. Go to **Settings** → **Secrets and variables** → **Actions**
+3. Under **Repository secrets**, click **New repository secret** and add:
+
+| Name | Value |
+|---|---|
+| `OPERATOR_CLIENT_ID` | your operator client id |
+| `OPERATOR_CLIENT_SECRET` | your operator client secret |
+
+Optional (as **Variables**, not secrets):
+
+| Name | Example |
+|---|---|
+| `BASE_URL` | `https://api-qa.ninjavan.co` |
+| `API_TIMEOUT_MS` | `30000` |
+| `OPERATOR_LOGIN_COUNTRY` | `sg` |
+
+### 2. Run the workflow
+
+- **Automatic:** every push / PR to `main`
+- **Manual:**
+  1. Go to **Actions** → **API Tests**
+  2. Click **Run workflow**
+  3. Pick country (`sg` / `my` / `id`)
+  4. Optionally set a scenario tag (e.g. `create_route_today`)
+  5. Click **Run workflow**
+
 ## Notes
 
 - `.env` is gitignored — keep secrets local; commit only `.env.example`
+- On GitHub, secrets come from Actions secrets (do not commit `.env`)
 - Default country is `sg` if no `--sg` / `--my` / `--id` flag is given
 - Features stay under `tests/route/features/`; Python steps under `tests/route/steps/`
