@@ -38,8 +38,10 @@ _apply_country_from_argv()
 from playwright.sync_api import APIRequestContext, Playwright  # noqa: E402
 
 from clients.operator_auth_client import OperatorAuthClient  # noqa: E402
+from clients.orders_client import OrdersClient  # noqa: E402
 from clients.posts_client import PostsClient  # noqa: E402
 from clients.routes_client import RoutesClient  # noqa: E402
+from clients.shipper_auth_client import ShipperAuthClient  # noqa: E402
 from clients.users_client import UsersClient  # noqa: E402
 from config.settings import settings  # noqa: E402
 
@@ -63,6 +65,13 @@ def pytest_addoption(parser: pytest.Parser) -> None:
             "Run one scenario by Gherkin tag, e.g. "
             "--scenario create_route_today"
         ),
+    )
+    group.addoption(
+        "--number-of-order",
+        action="store",
+        default=None,
+        type=int,
+        help="Override number_of_order for create-order scenarios",
     )
 
 
@@ -90,6 +99,9 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers", "archive_route_invalid_id: archive with invalid route id"
     )
+    config.addinivalue_line(
+        "markers", "create_order_success: create order with shipper token"
+    )
 
 
 def pytest_collection_modifyitems(
@@ -116,7 +128,9 @@ def pytest_collection_modifyitems(
                 mark.name
                 for item in items
                 for mark in item.iter_markers()
-                if mark.name.startswith(("create_route_", "archive_route"))
+                if mark.name.startswith(
+                    ("create_route_", "archive_route", "create_order")
+                )
             }
         )
         raise pytest.UsageError(
@@ -139,7 +153,7 @@ def pytest_report_header(config: pytest.Config) -> str:
 
 @pytest.fixture(scope="session")
 def operator_bearer_token(playwright: Playwright) -> str:
-    """Fetch once per session; token is shared across all countries."""
+    """Fetch once per session; operator token is shared across countries."""
     context = playwright.request.new_context(
         base_url=settings.base_url,
         extra_http_headers=settings.default_headers,
@@ -151,11 +165,26 @@ def operator_bearer_token(playwright: Playwright) -> str:
         context.dispose()
 
 
+@pytest.fixture(scope="session")
+def shipper_bearer_token(playwright: Playwright) -> str:
+    """Fetch once per session; shipper credentials come from country config."""
+    context = playwright.request.new_context(
+        base_url=settings.base_url,
+        extra_http_headers=settings.default_headers,
+        timeout=settings.api_timeout_ms,
+    )
+    try:
+        return ShipperAuthClient(context, settings).get_bearer_token()
+    finally:
+        context.dispose()
+
+
 @pytest.fixture(scope="function")
 def api_request_context(
     playwright: Playwright,
     operator_bearer_token: str,
 ) -> APIRequestContext:
+    """Default API context uses operator bearer (route / operator endpoints)."""
     context = playwright.request.new_context(
         base_url=settings.base_url,
         extra_http_headers=settings.auth_headers(operator_bearer_token),
@@ -166,8 +195,33 @@ def api_request_context(
 
 
 @pytest.fixture(scope="function")
+def shipper_request_context(
+    playwright: Playwright,
+    shipper_bearer_token: str,
+) -> APIRequestContext:
+    """API context for shipper-authenticated endpoints."""
+    context = playwright.request.new_context(
+        base_url=settings.base_url,
+        extra_http_headers=settings.auth_headers(shipper_bearer_token),
+        timeout=settings.api_timeout_ms,
+    )
+    yield context
+    context.dispose()
+
+
+@pytest.fixture(scope="function")
 def operator_auth_client(api_request_context: APIRequestContext) -> OperatorAuthClient:
     return OperatorAuthClient(api_request_context, settings)
+
+
+@pytest.fixture(scope="function")
+def shipper_auth_client(shipper_request_context: APIRequestContext) -> ShipperAuthClient:
+    return ShipperAuthClient(shipper_request_context, settings)
+
+
+@pytest.fixture(scope="function")
+def orders_client(shipper_request_context: APIRequestContext) -> OrdersClient:
+    return OrdersClient(shipper_request_context, settings)
 
 
 @pytest.fixture(scope="function")

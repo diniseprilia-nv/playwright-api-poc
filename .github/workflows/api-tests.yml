@@ -14,9 +14,14 @@ on:
         type: choice
         options: [sg, my, id]
       scenario:
-        description: Scenario tag (empty = all route scenarios)
+        description: Scenario tag (empty = all scenarios)
         required: false
-        default: ""
+        default: create_order_success
+      number_of_order:
+        description: Override number_of_order for create-order scenarios
+        required: false
+        default: "1"
+        type: string
 
 jobs:
   test:
@@ -30,6 +35,7 @@ jobs:
       OPERATOR_CLIENT_ID: ${{ secrets.OPERATOR_CLIENT_ID }}
       OPERATOR_CLIENT_SECRET: ${{ secrets.OPERATOR_CLIENT_SECRET }}
       COUNTRY: ${{ github.event.inputs.country || 'sg' }}
+      NUMBER_OF_ORDER: ${{ github.event.inputs.number_of_order || '' }}
 
     steps:
       - name: Checkout
@@ -55,10 +61,13 @@ jobs:
             exit 1
           fi
 
-      - name: Run route scenarios
+      - name: Run scenarios
         run: |
+          ARGS=(--${COUNTRY})
           if [ -n "${{ github.event.inputs.scenario }}" ]; then
-            ./run "${{ github.event.inputs.scenario }}" --${COUNTRY}
-          else
-            ./run --${COUNTRY}
+            ARGS=("${{ github.event.inputs.scenario }}" "${ARGS[@]}")
           fi
+          if [ -n "${NUMBER_OF_ORDER}" ]; then
+            ARGS+=(--number-of-order "${NUMBER_OF_ORDER}")
+          fi
+          ./run "${ARGS[@]}"

@@ -1,0 +1,23 @@
+[project]
+name = "playwright-api-poc"
+version = "0.1.0"
+description = "Playwright API automation POC with pytest-bdd for Ninja Van QA"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "playwright>=1.49.0",
+    "pytest>=8.0.0",
+    "pytest-playwright>=0.6.2",
+    "pytest-bdd>=7.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["clients", "config", "models", "utils", "data"]
+
+[tool.uv]
+package = true

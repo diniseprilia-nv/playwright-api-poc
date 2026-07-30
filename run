@@ -3,7 +3,8 @@
 
 Examples:
     ./run create_route_today --sg
-    ./run create_route_missing_driver --my
+    ./run create_order_success --sg
+    ./run create_order_success --sg --number-of-order 3
     ./run --sg
 """
 
@@ -16,7 +17,10 @@ from pathlib import Path
 
 SUPPORTED_COUNTRIES = ("sg", "my", "id")
 PROJECT_ROOT = Path(__file__).resolve().parent
-DEFAULT_TARGET = "tests/route/steps/routing.py"
+DEFAULT_TARGETS = [
+    "tests/route/steps/routing.py",
+    "tests/order/steps/ordering.py",
+]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -27,7 +31,8 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "examples:\n"
             "  ./run create_route_today --sg\n"
-            "  ./run create_route_invalid_driver --my\n"
+            "  ./run create_order_success --sg\n"
+            "  ./run create_order_success --sg --number-of-order 3\n"
             "  ./run --id\n"
         ),
     )
@@ -35,7 +40,13 @@ def build_parser() -> argparse.ArgumentParser:
         "scenario",
         nargs="?",
         default=None,
-        help="Scenario tag to run, e.g. create_route_today",
+        help="Scenario tag to run, e.g. create_order_success",
+    )
+    parser.add_argument(
+        "--number-of-order",
+        type=int,
+        default=None,
+        help="Override number_of_order for create-order scenarios",
     )
 
     country = parser.add_mutually_exclusive_group()
@@ -59,11 +70,13 @@ def main(argv: list[str] | None = None) -> int:
         sys.executable,
         "-m",
         "pytest",
-        DEFAULT_TARGET,
+        *DEFAULT_TARGETS,
         f"--country={country}",
     ]
     if args.scenario:
         cmd.append(f"--scenario={args.scenario.lstrip('@')}")
+    if args.number_of_order is not None:
+        cmd.append(f"--number-of-order={args.number_of_order}")
 
     if extra and extra[0] == "--":
         extra = extra[1:]

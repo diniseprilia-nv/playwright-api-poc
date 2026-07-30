@@ -41,6 +41,8 @@ class Settings:
     operator_client_id: str
     operator_client_secret: str
     operator_login_country: str
+    shipper_client_id: str
+    shipper_client_secret: str
     driver_id: int
     hub_id: int
     zone_id: int
@@ -48,6 +50,10 @@ class Settings:
     @property
     def operator_login_path(self) -> str:
         return f"/{self.operator_login_country}/aaa/login"
+
+    @property
+    def shipper_login_path(self) -> str:
+        return f"/{self.country}/aaa/2.0/oauth/access_token"
 
     @property
     def default_headers(self) -> dict[str, str]:
@@ -84,6 +90,8 @@ def _load_settings() -> Settings:
         operator_client_id=client_id,
         operator_client_secret=client_secret,
         operator_login_country=os.getenv("OPERATOR_LOGIN_COUNTRY", "sg").strip().lower(),
+        shipper_client_id=os.getenv("SHIPPER_CLIENT_ID", "").strip(),
+        shipper_client_secret=os.getenv("SHIPPER_CLIENT_SECRET", "").strip(),
         driver_id=int(os.getenv("DRIVER_ID", "0")),
         hub_id=int(os.getenv("HUB_ID", "0")),
         zone_id=int(os.getenv("ZONE_ID", "0")),

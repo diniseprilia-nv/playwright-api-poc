@@ -25,10 +25,18 @@ utils/                 # Assertions + console logging
 ```bash
 git clone git@github.com-work:diniseprilia-nv/playwright-api-poc.git
 cd playwright-api-poc
+
+# with uv (recommended)
+uv sync
+source .venv/bin/activate
+uv run playwright install
+
+# or with pip
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 playwright install
+
 cp .env.example .env
 ```
 
@@ -65,13 +73,16 @@ Preferred CLI:
 ```bash
 ./run create_route_today --sg
 ./run archive_route --my
-./run --id                    # all route scenarios for ID
+./run create_order_success --sg
+./run create_order_success --sg --number-of-order 3
+./run --id                    # all scenarios for ID
 ```
 
 Equivalent pytest flags:
 
 ```bash
 pytest tests/route/steps/routing.py --country sg --scenario create_route_today
+pytest tests/order/steps/ordering.py --country sg --scenario create_order_success --number-of-order 3
 ```
 
 ### Route scenario tags
@@ -85,6 +96,15 @@ pytest tests/route/steps/routing.py --country sg --scenario create_route_today
 | `create_route_invalid_driver` | Reject invalid `driver_id` |
 | `archive_route` | Create route, then archive it |
 | `archive_route_invalid_id` | Archive with invalid route id |
+
+### Order scenario tags
+
+| Tag | Description |
+|---|---|
+| `create_order_success` | Create order(s) with shipper bearer token |
+
+Dynamic order fields in the feature table: `service_type`, `service_level`, `from_data` (`Random` / `index-0..9`), `to_data`, `number_of_order`.  
+CLI/env override: `--number-of-order N` or `NUMBER_OF_ORDER=N`.
 
 ## Logging
 
@@ -124,8 +144,9 @@ Optional (as **Variables**, not secrets):
   1. Go to **Actions** → **API Tests**
   2. Click **Run workflow**
   3. Pick country (`sg` / `my` / `id`)
-  4. Optionally set a scenario tag (e.g. `create_route_today`)
-  5. Click **Run workflow**
+  4. Set scenario tag (e.g. `create_order_success` or `create_route_today`)
+  5. Set **number_of_order** (e.g. `3`) for order scenarios
+  6. Click **Run workflow**
 
 ## Notes
 
