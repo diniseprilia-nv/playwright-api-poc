@@ -54,21 +54,44 @@ jobs:
           playwright install --with-deps chromium
 
       - name: Resolve shipper credentials for country
+        env:
+          SHIPPER_CLIENT_ID_SG: ${{ secrets.SHIPPER_CLIENT_ID_SG }}
+          SHIPPER_CLIENT_SECRET_SG: ${{ secrets.SHIPPER_CLIENT_SECRET_SG }}
+          SHIPPER_CLIENT_ID_MY: ${{ secrets.SHIPPER_CLIENT_ID_MY }}
+          SHIPPER_CLIENT_SECRET_MY: ${{ secrets.SHIPPER_CLIENT_SECRET_MY }}
+          SHIPPER_CLIENT_ID_ID: ${{ secrets.SHIPPER_CLIENT_ID_ID }}
+          SHIPPER_CLIENT_SECRET_ID: ${{ secrets.SHIPPER_CLIENT_SECRET_ID }}
+          # Optional fallbacks (single-country setups)
+          SHIPPER_CLIENT_ID_FALLBACK: ${{ secrets.SHIPPER_CLIENT_ID }}
+          SHIPPER_CLIENT_SECRET_FALLBACK: ${{ secrets.SHIPPER_CLIENT_SECRET }}
         run: |
-          case "${COUNTRY}" in
-            sg)
-              echo "SHIPPER_CLIENT_ID=${{ secrets.SHIPPER_CLIENT_ID_SG }}" >> "$GITHUB_ENV"
-              echo "SHIPPER_CLIENT_SECRET=${{ secrets.SHIPPER_CLIENT_SECRET_SG }}" >> "$GITHUB_ENV"
-              ;;
-            my)
-              echo "SHIPPER_CLIENT_ID=${{ secrets.SHIPPER_CLIENT_ID_MY }}" >> "$GITHUB_ENV"
-              echo "SHIPPER_CLIENT_SECRET=${{ secrets.SHIPPER_CLIENT_SECRET_MY }}" >> "$GITHUB_ENV"
-              ;;
-            id)
-              echo "SHIPPER_CLIENT_ID=${{ secrets.SHIPPER_CLIENT_ID_ID }}" >> "$GITHUB_ENV"
-              echo "SHIPPER_CLIENT_SECRET=${{ secrets.SHIPPER_CLIENT_SECRET_ID }}" >> "$GITHUB_ENV"
-              ;;
-          esac
+          upper=$(echo "${COUNTRY}" | tr '[:lower:]' '[:upper:]')
+          id_var="SHIPPER_CLIENT_ID_${upper}"
+          secret_var="SHIPPER_CLIENT_SECRET_${upper}"
+          id_val="${!id_var}"
+          secret_val="${!secret_var}"
+
+          if [ -z "$id_val" ] || [ -z "$secret_val" ]; then
+            id_val="$SHIPPER_CLIENT_ID_FALLBACK"
+            secret_val="$SHIPPER_CLIENT_SECRET_FALLBACK"
+          fi
+
+          # Trim whitespace/newlines from pasted secrets
+          id_val=$(printf '%s' "$id_val" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          secret_val=$(printf '%s' "$secret_val" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+          if [ -z "$id_val" ] || [ -z "$secret_val" ]; then
+            echo "Missing shipper secrets for COUNTRY=${COUNTRY}"
+            echo "Add repository secrets: ${id_var} and ${secret_var}"
+            echo "Values must match your local config/countries/${COUNTRY}.local.env"
+            exit 1
+          fi
+
+          echo "Loaded shipper credentials for ${COUNTRY} (client_id_len=${#id_val}, secret_len=${#secret_val})"
+          {
+            echo "SHIPPER_CLIENT_ID=${id_val}"
+            echo "SHIPPER_CLIENT_SECRET=${secret_val}"
+          } >> "$GITHUB_ENV"
 
       - name: Check required secrets
         run: |
@@ -78,9 +101,10 @@ jobs:
             missing=1
           fi
           if [ -z "$SHIPPER_CLIENT_ID" ] || [ -z "$SHIPPER_CLIENT_SECRET" ]; then
-            echo "Missing shipper secrets for COUNTRY=${COUNTRY}"
-            echo "Add SHIPPER_CLIENT_ID_${COUNTRY^^} and SHIPPER_CLIENT_SECRET_${COUNTRY^^}"
+            echo "Shipper credentials were not exported to the job env"
             missing=1
+          else
+            echo "Shipper env ready (client_id_len=${#SHIPPER_CLIENT_ID}, secret_len=${#SHIPPER_CLIENT_SECRET})"
           fi
           if [ "$missing" -ne 0 ]; then
             echo "Add them under Settings → Secrets and variables → Actions"
@@ -97,3 +121,61 @@ jobs:
             ARGS+=(--number-of-order "${NUMBER_OF_ORDER}")
           fi
           ./run "${ARGS[@]}"
+
+      - name: Send Google Chat Notification
+        if: always()
+        env:
+          GOOGLE_CHAT_WEBHOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK }}
+          STATUS: ${{ job.status }}
+          WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ACTOR: ${{ github.actor }}
+          EVENT_NAME: ${{ github.event_name }}
+          COUNTRY: ${{ github.event.inputs.country || 'sg' }}
+          SCENARIO: ${{ github.event.inputs.scenario || 'all' }}
+          NUMBER_OF_ORDER: ${{ github.event.inputs.number_of_order || '1' }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          if [ -z "$GOOGLE_CHAT_WEBHOOK" ]; then
+            echo "GOOGLE_CHAT_WEBHOOK secret is not set, skipping notification."
+            exit 0
+          fi
+
+          if [ "$STATUS" = "success" ]; then
+            EMOJI="🟢"
+            STATUS_TEXT="Success"
+          elif [ "$STATUS" = "cancelled" ]; then
+            EMOJI="⚪"
+            STATUS_TEXT="Cancelled"
+          else
+            EMOJI="🔴"
+            STATUS_TEXT="Failed"
+          fi
+
+          # Construct a clean, Markdown-formatted message for Google Chat
+          MESSAGE="*API Tests Run: ${EMOJI} ${STATUS_TEXT}*\n\n"
+          MESSAGE+="• *Workflow:* [${{ github.workflow }} #${{ github.run_number }}](${WORKFLOW_URL})\n"
+          MESSAGE+="• *Triggered by:* \`${ACTOR}\`\n"
+          MESSAGE+="• *Event:* \`${EVENT_NAME}\`\n"
+          MESSAGE+="• *Branch:* \`${BRANCH}\`\n"
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            MESSAGE+="• *Parameters:*\n"
+            MESSAGE+="  - *Country:* \`${COUNTRY}\`\n"
+            MESSAGE+="  - *Scenario:* \`${SCENARIO}\`\n"
+            MESSAGE+="  - *Number of Orders:* \`${NUMBER_OF_ORDER}\`\n"
+          fi
+
+          if [ -n "$COMMIT_MSG" ]; then
+            FIRST_LINE=$(echo "$COMMIT_MSG" | head -n 1)
+            MESSAGE+="• *Commit:* \`${FIRST_LINE}\`\n"
+          fi
+
+          # Construct JSON payload using jq
+          PAYLOAD=$(jq -n --arg msg "$MESSAGE" '{text: $msg}')
+
+          curl -X POST \
+            -H "Content-Type: application/json; charset=UTF-8" \
+            -d "$PAYLOAD" \
+            "$GOOGLE_CHAT_WEBHOOK"
+
