@@ -53,10 +53,36 @@ jobs:
           pip install -r requirements.txt
           playwright install --with-deps chromium
 
+      - name: Resolve shipper credentials for country
+        run: |
+          case "${COUNTRY}" in
+            sg)
+              echo "SHIPPER_CLIENT_ID=${{ secrets.SHIPPER_CLIENT_ID_SG }}" >> "$GITHUB_ENV"
+              echo "SHIPPER_CLIENT_SECRET=${{ secrets.SHIPPER_CLIENT_SECRET_SG }}" >> "$GITHUB_ENV"
+              ;;
+            my)
+              echo "SHIPPER_CLIENT_ID=${{ secrets.SHIPPER_CLIENT_ID_MY }}" >> "$GITHUB_ENV"
+              echo "SHIPPER_CLIENT_SECRET=${{ secrets.SHIPPER_CLIENT_SECRET_MY }}" >> "$GITHUB_ENV"
+              ;;
+            id)
+              echo "SHIPPER_CLIENT_ID=${{ secrets.SHIPPER_CLIENT_ID_ID }}" >> "$GITHUB_ENV"
+              echo "SHIPPER_CLIENT_SECRET=${{ secrets.SHIPPER_CLIENT_SECRET_ID }}" >> "$GITHUB_ENV"
+              ;;
+          esac
+
       - name: Check required secrets
         run: |
+          missing=0
           if [ -z "$OPERATOR_CLIENT_ID" ] || [ -z "$OPERATOR_CLIENT_SECRET" ]; then
             echo "Missing secrets: OPERATOR_CLIENT_ID and/or OPERATOR_CLIENT_SECRET"
+            missing=1
+          fi
+          if [ -z "$SHIPPER_CLIENT_ID" ] || [ -z "$SHIPPER_CLIENT_SECRET" ]; then
+            echo "Missing shipper secrets for COUNTRY=${COUNTRY}"
+            echo "Add SHIPPER_CLIENT_ID_${COUNTRY^^} and SHIPPER_CLIENT_SECRET_${COUNTRY^^}"
+            missing=1
+          fi
+          if [ "$missing" -ne 0 ]; then
             echo "Add them under Settings → Secrets and variables → Actions"
             exit 1
           fi

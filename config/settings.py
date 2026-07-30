@@ -21,10 +21,15 @@ _country_env = _COUNTRIES_DIR / f"{_country}.env"
 if not _country_env.exists():
     raise FileNotFoundError(f"Country config not found: {_country_env}")
 
-# Country defaults, then re-apply root .env so local secrets/overrides win
-load_dotenv(_country_env, override=True)
-load_dotenv(_PROJECT_ROOT / ".env", override=True)
-# Keep the selected country authoritative
+_country_local_env = _COUNTRIES_DIR / f"{_country}.local.env"
+
+# Preserve CI/process env secrets: only fill missing keys from files when override=False.
+# Order: country defaults → country local secrets → root shared secrets.
+load_dotenv(_country_env, override=False)
+load_dotenv(_country_local_env, override=False)
+load_dotenv(_PROJECT_ROOT / ".env", override=False)
+
+# Keep the selected country authoritative (CLI / COUNTRY env wins)
 os.environ["COUNTRY"] = _country
 
 

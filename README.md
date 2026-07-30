@@ -128,6 +128,12 @@ Each scenario run prints:
 |---|---|
 | `OPERATOR_CLIENT_ID` | your operator client id |
 | `OPERATOR_CLIENT_SECRET` | your operator client secret |
+| `SHIPPER_CLIENT_ID_SG` | SG shipper client id |
+| `SHIPPER_CLIENT_SECRET_SG` | SG shipper client secret |
+| `SHIPPER_CLIENT_ID_MY` | MY shipper client id (when needed) |
+| `SHIPPER_CLIENT_SECRET_MY` | MY shipper client secret (when needed) |
+| `SHIPPER_CLIENT_ID_ID` | ID shipper client id (when needed) |
+| `SHIPPER_CLIENT_SECRET_ID` | ID shipper client secret (when needed) |
 
 Optional (as **Variables**, not secrets):
 
@@ -136,6 +142,17 @@ Optional (as **Variables**, not secrets):
 | `BASE_URL` | `https://api-qa.ninjavan.co` |
 | `API_TIMEOUT_MS` | `30000` |
 | `OPERATOR_LOGIN_COUNTRY` | `sg` |
+
+### Local shipper secrets
+
+Do **not** put shipper credentials in committed `config/countries/*.env` files.
+
+```bash
+cp config/countries/sg.local.env.example config/countries/sg.local.env
+# edit sg.local.env with SHIPPER_CLIENT_ID / SHIPPER_CLIENT_SECRET
+```
+
+`*.local.env` is gitignored.
 
 ### 2. Run the workflow
 
