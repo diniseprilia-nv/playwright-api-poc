@@ -120,7 +120,7 @@ jobs:
           if [ -n "${NUMBER_OF_ORDER}" ]; then
             ARGS+=(--number-of-order "${NUMBER_OF_ORDER}")
           fi
-          ./run "${ARGS[@]}"
+          ./run "${ARGS[@]}" 2>&1 | tee test_output.log
 
       - name: Send Google Chat Notification
         if: always()
@@ -128,13 +128,6 @@ jobs:
           GOOGLE_CHAT_WEBHOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK }}
           STATUS: ${{ job.status }}
           WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          ACTOR: ${{ github.actor }}
-          EVENT_NAME: ${{ github.event_name }}
-          COUNTRY: ${{ github.event.inputs.country || 'sg' }}
-          SCENARIO: ${{ github.event.inputs.scenario || 'all' }}
-          NUMBER_OF_ORDER: ${{ github.event.inputs.number_of_order || '1' }}
-          BRANCH: ${{ github.ref_name }}
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
           if [ -z "$GOOGLE_CHAT_WEBHOOK" ]; then
             echo "GOOGLE_CHAT_WEBHOOK secret is not set, skipping notification."
@@ -152,24 +145,18 @@ jobs:
             STATUS_TEXT="Failed"
           fi
 
-          # Construct a clean, Markdown-formatted message for Google Chat
-          MESSAGE="*API Tests Run: ${EMOJI} ${STATUS_TEXT}*\n\n"
-          MESSAGE+="• *Workflow:* [${{ github.workflow }} #${{ github.run_number }}](${WORKFLOW_URL})\n"
-          MESSAGE+="• *Triggered by:* \`${ACTOR}\`\n"
-          MESSAGE+="• *Event:* \`${EVENT_NAME}\`\n"
-          MESSAGE+="• *Branch:* \`${BRANCH}\`\n"
+          # Construct message with Status and Link
+          MESSAGE="*Status:* ${EMOJI} ${STATUS_TEXT}\n"
 
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            MESSAGE+="• *Parameters:*\n"
-            MESSAGE+="  - *Country:* \`${COUNTRY}\`\n"
-            MESSAGE+="  - *Scenario:* \`${SCENARIO}\`\n"
-            MESSAGE+="  - *Number of Orders:* \`${NUMBER_OF_ORDER}\`\n"
+          # If the run failed, extract the error message from the test output log
+          if [ "$STATUS" = "failure" ]; then
+            ERROR_SUMMARY=$(python3 -c "import os, re; log_path = 'test_output.log'; exists = os.path.exists(log_path); content = open(log_path, 'r', encoding='utf-8', errors='ignore').read() if exists else ''; clean = re.sub(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])', '', content) if exists else 'Test output log not found.'; parts = re.split(r'=+\s*short test summary info\s*=+', clean); print('\n'.join(parts[-1].splitlines()[:25]) if len(parts) > 1 else ('\n'.join(clean.splitlines()[-15:]) if exists else clean))")
+            if [ -n "$ERROR_SUMMARY" ]; then
+              MESSAGE+="*Error:*\n\`\`\`\n${ERROR_SUMMARY}\n\`\`\`\n"
+            fi
           fi
 
-          if [ -n "$COMMIT_MSG" ]; then
-            FIRST_LINE=$(echo "$COMMIT_MSG" | head -n 1)
-            MESSAGE+="• *Commit:* \`${FIRST_LINE}\`\n"
-          fi
+          MESSAGE+="*Link:* [Open detailed result](${WORKFLOW_URL})"
 
           # Construct JSON payload using jq
           PAYLOAD=$(jq -n --arg msg "$MESSAGE" '{text: $msg}')
@@ -178,4 +165,7 @@ jobs:
             -H "Content-Type: application/json; charset=UTF-8" \
             -d "$PAYLOAD" \
             "$GOOGLE_CHAT_WEBHOOK"
+
+
+
 
