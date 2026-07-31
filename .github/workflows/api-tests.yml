@@ -112,7 +112,9 @@ jobs:
           fi
 
       - name: Run scenarios
+        id: tests
         run: |
+          set -euo pipefail
           ARGS=(--${COUNTRY})
           if [ -n "${{ github.event.inputs.scenario }}" ]; then
             ARGS=("${{ github.event.inputs.scenario }}" "${ARGS[@]}")
@@ -120,6 +122,7 @@ jobs:
           if [ -n "${NUMBER_OF_ORDER}" ]; then
             ARGS+=(--number-of-order "${NUMBER_OF_ORDER}")
           fi
+          # pipefail keeps pytest's non-zero exit (without it, tee makes the step always green)
           ./run "${ARGS[@]}" 2>&1 | tee test_output.log
 
       - name: Send Google Chat Notification
