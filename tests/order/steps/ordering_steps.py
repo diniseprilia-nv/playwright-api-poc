@@ -1,13 +1,12 @@
 """Python step definitions for create order Gherkin scenarios (shipper auth)."""
 
 import os
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import pytest
 from playwright.sync_api import APIResponse
-from pytest_bdd import given, parsers, scenarios, then, when
+from pytest_bdd import given, parsers, then, when
 
 from clients.orders_client import OrdersClient
 from config.settings import settings
@@ -20,9 +19,6 @@ from utils.console_log import (
     log_response,
     log_scenario_header,
 )
-
-_FEATURES_DIR = Path(__file__).resolve().parent.parent / "features"
-scenarios(_FEATURES_DIR / "create_order.feature")
 
 _DYNAMIC_FIELDS = {"service_type", "service_level", "from_data", "to_data", "number_of_order"}
 

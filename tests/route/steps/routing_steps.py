@@ -1,12 +1,11 @@
 """Python step definitions for create/archive route Gherkin scenarios."""
 
 from datetime import date
-from pathlib import Path
 from typing import Any
 
 import pytest
 from playwright.sync_api import APIResponse
-from pytest_bdd import given, parsers, scenarios, then, when
+from pytest_bdd import given, parsers, then, when
 
 from clients.routes_client import RoutesClient
 from config.settings import settings
@@ -23,10 +22,6 @@ from utils.console_log import (
     log_response,
     log_scenario_header,
 )
-
-_FEATURES_DIR = Path(__file__).resolve().parent.parent / "features"
-scenarios(_FEATURES_DIR / "create_route.feature")
-scenarios(_FEATURES_DIR / "archive_route.feature")
 
 
 @pytest.fixture

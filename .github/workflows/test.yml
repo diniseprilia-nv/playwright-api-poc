@@ -13,10 +13,16 @@ on:
         default: sg
         type: choice
         options: [sg, my, id]
+      feature:
+        description: Feature to run (all = every feature file)
+        required: true
+        default: all
+        type: choice
+        options: [all, create_order, create_route, archive_route]
       scenario:
-        description: Scenario tag (empty = all scenarios)
+        description: Scenario tag (empty = all scenarios in selected feature)
         required: false
-        default: create_order_success
+        default: ""
       number_of_order:
         description: Override number_of_order for create-order scenarios
         required: false
@@ -24,9 +30,51 @@ on:
         type: string
 
 jobs:
+  pre-test:
+    uses: ./.github/workflows/pre-test.yml
+
+  select-features:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - name: Build feature matrix
+        id: select
+        env:
+          FEATURE: ${{ github.event.inputs.feature || 'all' }}
+          SCENARIO: ${{ github.event.inputs.scenario || '' }}
+        run: |
+          set -euo pipefail
+          all='[
+            {"name":"create_order","path":"tests/order/steps/test_create_order.py"},
+            {"name":"create_route","path":"tests/route/steps/test_create_route.py"},
+            {"name":"archive_route","path":"tests/route/steps/test_archive_route.py"}
+          ]'
+
+          selected="$FEATURE"
+          # If a scenario tag is given with feature=all, narrow to the matching feature.
+          if { [ "$selected" = "all" ] || [ -z "$selected" ]; } && [ -n "$SCENARIO" ]; then
+            tag="${SCENARIO#@}"
+            case "$tag" in
+              create_order*) selected="create_order" ;;
+              create_route*) selected="create_route" ;;
+              archive_route*) selected="archive_route" ;;
+            esac
+          fi
+
+          if [ "$selected" = "all" ] || [ -z "$selected" ]; then
+            echo "matrix=$(jq -c --argjson include "$all" '{include:$include}')" >> "$GITHUB_OUTPUT"
+          else
+            echo "matrix=$(jq -c --argjson include "$all" --arg name "$selected" '{include: [$include[] | select(.name == $name)]}')" >> "$GITHUB_OUTPUT"
+          fi
+
   test:
+    needs: [pre-test, select-features]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.select-features.outputs.matrix) }}
 
     env:
       BASE_URL: ${{ vars.BASE_URL || 'https://api-qa.ninjavan.co' }}
@@ -53,46 +101,6 @@ jobs:
           pip install -r requirements.txt
           playwright install --with-deps chromium
 
-      - name: Resolve shipper credentials for country
-        env:
-          SHIPPER_CLIENT_ID_SG: ${{ secrets.SHIPPER_CLIENT_ID_SG }}
-          SHIPPER_CLIENT_SECRET_SG: ${{ secrets.SHIPPER_CLIENT_SECRET_SG }}
-          SHIPPER_CLIENT_ID_MY: ${{ secrets.SHIPPER_CLIENT_ID_MY }}
-          SHIPPER_CLIENT_SECRET_MY: ${{ secrets.SHIPPER_CLIENT_SECRET_MY }}
-          SHIPPER_CLIENT_ID_ID: ${{ secrets.SHIPPER_CLIENT_ID_ID }}
-          SHIPPER_CLIENT_SECRET_ID: ${{ secrets.SHIPPER_CLIENT_SECRET_ID }}
-          # Optional fallbacks (single-country setups)
-          SHIPPER_CLIENT_ID_FALLBACK: ${{ secrets.SHIPPER_CLIENT_ID }}
-          SHIPPER_CLIENT_SECRET_FALLBACK: ${{ secrets.SHIPPER_CLIENT_SECRET }}
-        run: |
-          upper=$(echo "${COUNTRY}" | tr '[:lower:]' '[:upper:]')
-          id_var="SHIPPER_CLIENT_ID_${upper}"
-          secret_var="SHIPPER_CLIENT_SECRET_${upper}"
-          id_val="${!id_var}"
-          secret_val="${!secret_var}"
-
-          if [ -z "$id_val" ] || [ -z "$secret_val" ]; then
-            id_val="$SHIPPER_CLIENT_ID_FALLBACK"
-            secret_val="$SHIPPER_CLIENT_SECRET_FALLBACK"
-          fi
-
-          # Trim whitespace/newlines from pasted secrets
-          id_val=$(printf '%s' "$id_val" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-          secret_val=$(printf '%s' "$secret_val" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-
-          if [ -z "$id_val" ] || [ -z "$secret_val" ]; then
-            echo "Missing shipper secrets for COUNTRY=${COUNTRY}"
-            echo "Add repository secrets: ${id_var} and ${secret_var}"
-            echo "Values must match your local config/countries/${COUNTRY}.local.env"
-            exit 1
-          fi
-
-          echo "Loaded shipper credentials for ${COUNTRY} (client_id_len=${#id_val}, secret_len=${#secret_val})"
-          {
-            echo "SHIPPER_CLIENT_ID=${id_val}"
-            echo "SHIPPER_CLIENT_SECRET=${secret_val}"
-          } >> "$GITHUB_ENV"
-
       - name: Check required secrets
         run: |
           if [ -z "$OPERATOR_CLIENT_ID" ] || [ -z "$OPERATOR_CLIENT_SECRET" ]; then
@@ -102,10 +110,9 @@ jobs:
           fi
           echo "Operator secrets present"
 
-      - name: Run scenarios
+      - name: Run ${{ matrix.name }} feature
         id: tests
         env:
-          # Inject secrets directly into this step (avoids GITHUB_ENV remapping issues)
           SHIPPER_CLIENT_ID_SG: ${{ secrets.SHIPPER_CLIENT_ID_SG }}
           SHIPPER_CLIENT_SECRET_SG: ${{ secrets.SHIPPER_CLIENT_SECRET_SG }}
           SHIPPER_CLIENT_ID_MY: ${{ secrets.SHIPPER_CLIENT_ID_MY }}
@@ -114,13 +121,15 @@ jobs:
           SHIPPER_CLIENT_SECRET_ID: ${{ secrets.SHIPPER_CLIENT_SECRET_ID }}
           SHIPPER_CLIENT_ID: ${{ secrets.SHIPPER_CLIENT_ID }}
           SHIPPER_CLIENT_SECRET: ${{ secrets.SHIPPER_CLIENT_SECRET }}
+          FEATURE_PATH: ${{ matrix.path }}
+          FEATURE_NAME: ${{ matrix.name }}
+          SCENARIO: ${{ github.event.inputs.scenario || '' }}
         run: |
           set -euo pipefail
           upper=$(echo "${COUNTRY}" | tr '[:lower:]' '[:upper:]')
           id_var="SHIPPER_CLIENT_ID_${upper}"
           secret_var="SHIPPER_CLIENT_SECRET_${upper}"
 
-          # Prefer country-specific secret, then generic fallback
           shipper_id="${!id_var:-}"
           shipper_secret="${!secret_var:-}"
           if [ -z "$shipper_id" ] || [ -z "$shipper_secret" ]; then
@@ -140,33 +149,35 @@ jobs:
 
           export SHIPPER_CLIENT_ID="$shipper_id"
           export SHIPPER_CLIENT_SECRET="$shipper_secret"
+          echo "Feature=${FEATURE_NAME} path=${FEATURE_PATH}"
           echo "Shipper creds for ${COUNTRY}: id_len=${#SHIPPER_CLIENT_ID} secret_len=${#SHIPPER_CLIENT_SECRET} id_suffix=...${SHIPPER_CLIENT_ID: -4}"
 
-          ARGS=(--${COUNTRY})
-          if [ -n "${{ github.event.inputs.scenario }}" ]; then
-            ARGS=("${{ github.event.inputs.scenario }}" "${ARGS[@]}")
+          CMD=(python -m pytest "${FEATURE_PATH}" --country="${COUNTRY}")
+          if [ -n "${SCENARIO}" ]; then
+            CMD+=(--scenario="${SCENARIO}")
           fi
           if [ -n "${NUMBER_OF_ORDER}" ]; then
-            ARGS+=(--number-of-order "${NUMBER_OF_ORDER}")
+            CMD+=(--number-of-order="${NUMBER_OF_ORDER}")
           fi
-          # pipefail keeps pytest's non-zero exit (without it, tee makes the step always green)
-          ./run "${ARGS[@]}" 2>&1 | tee test_output.log
 
-      - name: Send Google Chat Notification
+          echo "→ ${CMD[*]}"
+          "${CMD[@]}" 2>&1 | tee "test_output_${FEATURE_NAME}.log"
+
+      - name: Upload test log
         if: always()
-        env:
-          GOOGLE_CHAT_WEBHOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK }}
-          STATUS: ${{ job.status }}
-          WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          RUN_NUMBER: ${{ github.run_number }}
-          ACTOR: ${{ github.actor }}
-          BRANCH: ${{ github.ref_name }}
-          EVENT_NAME: ${{ github.event_name }}
-          WORKFLOW_NAME: ${{ github.workflow }}
-        run: |
-          python scripts/send_notification.py
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log-${{ matrix.name }}
+          path: test_output_${{ matrix.name }}.log
+          if-no-files-found: warn
+          retention-days: 7
 
-
-
-
-
+  notify:
+    needs: [pre-test, test]
+    if: always()
+    uses: ./.github/workflows/send-google-chat-notification.yml
+    with:
+      status: ${{ needs.test.result == 'skipped' && needs.pre-test.result || needs.test.result }}
+      workflow_name: API Tests
+    secrets:
+      GOOGLE_CHAT_WEBHOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK }}

@@ -81,7 +81,9 @@ Preferred CLI:
 Equivalent pytest flags:
 
 ```bash
-pytest tests/route/steps/routing.py --country sg --scenario create_route_today
+pytest tests/route/steps/test_create_route.py --country sg --scenario create_route_today
+# or: ./run create_route --sg
+# or: ./run create_route_today --sg
 pytest tests/order/steps/ordering.py --country sg --scenario create_order_success --number-of-order 3
 ```
 
@@ -156,14 +158,15 @@ cp config/countries/sg.local.env.example config/countries/sg.local.env
 
 ### 2. Run the workflow
 
-- **Automatic:** every push / PR to `main`
+- **Automatic:** every push / PR to `main` (runs `pre-test` → per-feature `test` jobs → Google Chat notify)
 - **Manual:**
   1. Go to **Actions** → **API Tests**
   2. Click **Run workflow**
   3. Pick country (`sg` / `my` / `id`)
-  4. Set scenario tag (e.g. `create_order_success` or `create_route_today`)
-  5. Set **number_of_order** (e.g. `3`) for order scenarios
-  6. Click **Run workflow**
+  4. Pick feature (`all`, `create_order`, `create_route`, or `archive_route`)
+  5. Optionally set a scenario tag (e.g. `create_order_success` or `create_route_today`)
+  6. Set **number_of_order** (e.g. `3`) for order scenarios
+  7. Click **Run workflow**
 
 ## Notes
 

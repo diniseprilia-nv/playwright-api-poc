@@ -1,0 +1,63 @@
+name: Send Google Chat Notification
+
+on:
+  workflow_call:
+    inputs:
+      status:
+        description: Overall job/workflow status (success, failure, cancelled)
+        required: true
+        type: string
+      workflow_name:
+        description: Display name for the notification card
+        required: false
+        type: string
+        default: API Tests
+    secrets:
+      GOOGLE_CHAT_WEBHOOK:
+        required: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download test logs
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-log-*
+          path: test-logs
+          merge-multiple: true
+
+      - name: Merge test logs
+        run: |
+          set -euo pipefail
+          mkdir -p test-logs
+          if compgen -G "test-logs/*.log" > /dev/null; then
+            {
+              for log in test-logs/*.log; do
+                echo "===== $(basename "$log") ====="
+                cat "$log"
+                echo
+              done
+            } > test_output.log
+          else
+            echo "No per-feature test logs found." > test_output.log
+          fi
+
+      - name: Send Google Chat Notification
+        env:
+          GOOGLE_CHAT_WEBHOOK: ${{ secrets.GOOGLE_CHAT_WEBHOOK }}
+          STATUS: ${{ inputs.status }}
+          WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          ACTOR: ${{ github.actor }}
+          BRANCH: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_NAME: ${{ inputs.workflow_name }}
+        run: |
+          python scripts/send_notification.py
