@@ -83,8 +83,20 @@ def _load_settings() -> Settings:
             "OPERATOR_CLIENT_ID and OPERATOR_CLIENT_SECRET must be set in .env"
         )
 
+    country = os.getenv("COUNTRY", "sg").strip().lower()
+    country_upper = country.upper()
+    # Accept both SHIPPER_CLIENT_ID and SHIPPER_CLIENT_ID_SG (country-suffixed)
+    shipper_client_id = (
+        os.getenv("SHIPPER_CLIENT_ID", "").strip()
+        or os.getenv(f"SHIPPER_CLIENT_ID_{country_upper}", "").strip()
+    )
+    shipper_client_secret = (
+        os.getenv("SHIPPER_CLIENT_SECRET", "").strip()
+        or os.getenv(f"SHIPPER_CLIENT_SECRET_{country_upper}", "").strip()
+    )
+
     return Settings(
-        country=os.getenv("COUNTRY", "sg").strip().lower(),
+        country=country,
         country_name=os.getenv("COUNTRY_NAME", "").strip(),
         timezone=os.getenv("TIMEZONE", "Asia/Singapore").strip(),
         language=os.getenv("LANGUAGE", "en").strip(),
@@ -95,8 +107,8 @@ def _load_settings() -> Settings:
         operator_client_id=client_id,
         operator_client_secret=client_secret,
         operator_login_country=os.getenv("OPERATOR_LOGIN_COUNTRY", "sg").strip().lower(),
-        shipper_client_id=os.getenv("SHIPPER_CLIENT_ID", "").strip(),
-        shipper_client_secret=os.getenv("SHIPPER_CLIENT_SECRET", "").strip(),
+        shipper_client_id=shipper_client_id,
+        shipper_client_secret=shipper_client_secret,
         driver_id=int(os.getenv("DRIVER_ID", "0")),
         hub_id=int(os.getenv("HUB_ID", "0")),
         zone_id=int(os.getenv("ZONE_ID", "0")),

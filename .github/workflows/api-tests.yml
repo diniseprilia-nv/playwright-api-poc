@@ -95,26 +95,53 @@ jobs:
 
       - name: Check required secrets
         run: |
-          missing=0
           if [ -z "$OPERATOR_CLIENT_ID" ] || [ -z "$OPERATOR_CLIENT_SECRET" ]; then
             echo "Missing secrets: OPERATOR_CLIENT_ID and/or OPERATOR_CLIENT_SECRET"
-            missing=1
-          fi
-          if [ -z "$SHIPPER_CLIENT_ID" ] || [ -z "$SHIPPER_CLIENT_SECRET" ]; then
-            echo "Shipper credentials were not exported to the job env"
-            missing=1
-          else
-            echo "Shipper env ready (client_id_len=${#SHIPPER_CLIENT_ID}, secret_len=${#SHIPPER_CLIENT_SECRET})"
-          fi
-          if [ "$missing" -ne 0 ]; then
             echo "Add them under Settings → Secrets and variables → Actions"
             exit 1
           fi
+          echo "Operator secrets present"
 
       - name: Run scenarios
         id: tests
+        env:
+          # Inject secrets directly into this step (avoids GITHUB_ENV remapping issues)
+          SHIPPER_CLIENT_ID_SG: ${{ secrets.SHIPPER_CLIENT_ID_SG }}
+          SHIPPER_CLIENT_SECRET_SG: ${{ secrets.SHIPPER_CLIENT_SECRET_SG }}
+          SHIPPER_CLIENT_ID_MY: ${{ secrets.SHIPPER_CLIENT_ID_MY }}
+          SHIPPER_CLIENT_SECRET_MY: ${{ secrets.SHIPPER_CLIENT_SECRET_MY }}
+          SHIPPER_CLIENT_ID_ID: ${{ secrets.SHIPPER_CLIENT_ID_ID }}
+          SHIPPER_CLIENT_SECRET_ID: ${{ secrets.SHIPPER_CLIENT_SECRET_ID }}
+          SHIPPER_CLIENT_ID: ${{ secrets.SHIPPER_CLIENT_ID }}
+          SHIPPER_CLIENT_SECRET: ${{ secrets.SHIPPER_CLIENT_SECRET }}
         run: |
           set -euo pipefail
+          upper=$(echo "${COUNTRY}" | tr '[:lower:]' '[:upper:]')
+          id_var="SHIPPER_CLIENT_ID_${upper}"
+          secret_var="SHIPPER_CLIENT_SECRET_${upper}"
+
+          # Prefer country-specific secret, then generic fallback
+          shipper_id="${!id_var:-}"
+          shipper_secret="${!secret_var:-}"
+          if [ -z "$shipper_id" ] || [ -z "$shipper_secret" ]; then
+            shipper_id="${SHIPPER_CLIENT_ID:-}"
+            shipper_secret="${SHIPPER_CLIENT_SECRET:-}"
+          fi
+
+          shipper_id=$(printf '%s' "$shipper_id" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^"//;s/"$//')
+          shipper_secret=$(printf '%s' "$shipper_secret" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^"//;s/"$//')
+
+          if [ -z "$shipper_id" ] || [ -z "$shipper_secret" ]; then
+            echo "Missing shipper secrets for COUNTRY=${COUNTRY}"
+            echo "Set repository secrets ${id_var} and ${secret_var}"
+            echo "(or SHIPPER_CLIENT_ID / SHIPPER_CLIENT_SECRET as fallback)"
+            exit 1
+          fi
+
+          export SHIPPER_CLIENT_ID="$shipper_id"
+          export SHIPPER_CLIENT_SECRET="$shipper_secret"
+          echo "Shipper creds for ${COUNTRY}: id_len=${#SHIPPER_CLIENT_ID} secret_len=${#SHIPPER_CLIENT_SECRET} id_suffix=...${SHIPPER_CLIENT_ID: -4}"
+
           ARGS=(--${COUNTRY})
           if [ -n "${{ github.event.inputs.scenario }}" ]; then
             ARGS=("${{ github.event.inputs.scenario }}" "${ARGS[@]}")
